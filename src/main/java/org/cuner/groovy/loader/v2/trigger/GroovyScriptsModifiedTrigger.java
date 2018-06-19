@@ -40,7 +40,9 @@ public class GroovyScriptsModifiedTrigger implements GroovyRefreshTrigger {
                 fileList.addAll(getFileList(file));
             }
         } else {
-            fileList.add(base);
+            if (base.getName().endsWith(".groovy")) {
+                fileList.add(base);
+            }
         }
         return fileList;
     }

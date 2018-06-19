@@ -5,5 +5,5 @@ package org.cuner.groovy.loader.v2.listener;
  */
 public interface GroovyRefreshListener {
 
-    public void refresh(GroovyRefreshEvent event);
+    void refresh(GroovyRefreshEvent event);
 }

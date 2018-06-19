@@ -2,6 +2,7 @@ package org.cuner.groovy.loader.v2;
 
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovySystem;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.cuner.groovy.loader.v2.listener.GroovyRefreshEvent;
 import org.cuner.groovy.loader.v2.listener.GroovyRefreshListener;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -56,7 +58,7 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
 
     private URLClassLoader urlClassLoader;
 
-    private Map<String, Long> scriptLastModifiedMap;
+    private final ConcurrentHashMap<String, Long> scriptLastModifiedMap = new ConcurrentHashMap<String, Long>();;
 
     private static Field injectionMetadataCacheField =
             ReflectionUtils.findField(AutowiredAnnotationBeanPostProcessor.class, "injectionMetadataCache");
@@ -84,7 +86,6 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
             this.toBeDestoryedContext = new ArrayList<ApplicationContext>(namespacedContext.values());
         }
         this.namespacedContext = new HashMap<String, ApplicationContext>();
-        this.scriptLastModifiedMap = new HashMap<String, Long>();
 
         if (StringUtils.isBlank(this.baseDir)) {
             this.baseDir = this.getClass().getClassLoader().getResource("").getPath() + "/groovy";
@@ -109,6 +110,12 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
         scanNamespaces(base, base.getName());
 
         listener.refresh(new GroovyRefreshEvent(parentContext, namespacedContext));
+
+        if (CollectionUtils.isNotEmpty(toBeDestoryedContext)) {
+            for (ApplicationContext context : toBeDestoryedContext) {
+                ((ClassPathXmlApplicationContext)context).close();
+            }
+        }
 
     }
 
@@ -167,8 +174,7 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
             GroovyScriptFactory groovyScriptFactory = new GroovyScriptFactory(scriptLocation);
             groovyScriptFactory.setBeanFactory(beanFactory);
             groovyScriptFactory.setBeanClassLoader(urlClassLoader);
-            Object bean =
-                    groovyScriptFactory.getScriptedObject(scriptSource);
+            Object bean = groovyScriptFactory.getScriptedObject(scriptSource);
             if (bean == null) {
                 //只有静态方法的groovy脚本(没有类声明)
                 return;
@@ -179,7 +185,7 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
             GroovySystem.getMetaClassRegistry().removeMetaClass(bean.getClass());
             groovyScriptFactory.getGroovyClassLoader().clearCache();
 
-            String beanName = file.getName();
+            String beanName = StringUtils.removeEnd(file.getName(), ".groovy").toLowerCase();
             if (beanFactory.containsBean(beanName)) {
                 beanFactory.destroySingleton(beanName); //移除单例bean
                 removeInjectCache(context, bean); //移除注入缓存 否则Caused by: java.lang.IllegalArgumentException: object is not an instance of declaring class
@@ -222,7 +228,7 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
         return !context.getResource(scriptLocation).exists();
     }
 
-    private void startScriptReloadStrategy(final GroovyRefreshTrigger trigger, final long scriptCheckInterval, final Map<String, Long> scriptLastModifiedMap, final String baseDir) {
+    private void startScriptReloadStrategy(final GroovyRefreshTrigger trigger, final long scriptCheckInterval, final ConcurrentHashMap<String, Long> scriptLastModifiedMap, final String baseDir) {
         new Thread() {
             @Override
             public void run() {
@@ -236,7 +242,6 @@ public class NamespacedGroovyLoader implements ApplicationListener<ContextRefres
                         }
                     } catch (Throwable e) {
                         logger.error("groovy refresh/check error!", e);
-                    } finally {
                     }
                 }
             }
