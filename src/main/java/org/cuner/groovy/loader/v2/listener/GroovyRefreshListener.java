@@ -1,0 +1,9 @@
+package org.cuner.groovy.loader.v2.listener;
+
+/**
+ * Created by houan on 18/6/13.
+ */
+public interface GroovyRefreshListener {
+
+    public void refresh(GroovyRefreshEvent event);
+}
